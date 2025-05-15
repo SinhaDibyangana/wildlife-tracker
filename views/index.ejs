@@ -1,0 +1,185 @@
+<% title = "Wildlife Tracker" %>
+
+<div class="p-6">
+  <h1 class="text-3xl font-bold text-center mb-6">🌳 Wildlife Tracker</h1>
+
+  <!-- Dropdown to choose forest -->
+  <div class="mb-4 text-center">
+    <label for="forestSelect" class="text-lg font-semibold">Select Forest:</label>
+    <select id="forestSelect" class="p-2 border rounded ml-2"></select>
+  </div>
+
+  <!-- Google Map -->
+  <div id="map" class="w-full h-[500px] rounded shadow-md border"></div>
+</div>
+
+<!-- 🔴 Risk Panel -->
+<div id="riskPanel" class="fixed top-4 right-4 bg-green-100 text-green-800 border border-green-400 px-4 py-2 rounded shadow-md transition-all duration-300 z-50">
+  <p class="font-semibold text-lg">Poaching Risk</p>
+  <p>Level: <span id="riskLevel">Low</span></p>
+  <p>Score: <span id="riskScore">0.00</span></p>
+</div>
+
+<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD8rxkasBUred2z5mtju45Euk4YHl1HKz8"></script>
+
+<script>
+  let map, geoZone, geoFenceBox, currentForest;
+  let animalIntervals = [];
+  let animalMarkers = [];
+
+  async function loadForests() {
+    const res = await fetch('/api/forests');
+    const forests = await res.json();
+    const select = document.getElementById('forestSelect');
+
+    forests.forEach((f, index) => {
+      const option = document.createElement('option');
+      option.value = index;
+      option.text = f.name;
+      select.appendChild(option);
+    });
+
+    initMap(forests[0]);
+
+    select.addEventListener('change', () => {
+      const selected = forests[select.value];
+      initMap(selected);
+    });
+  }
+
+  async function initMap(forest) {
+    // 🔄 Clear previous intervals & markers
+    animalIntervals.forEach(clearInterval);
+    animalIntervals = [];
+    animalMarkers.forEach(m => m.setMap(null));
+    animalMarkers = [];
+
+    currentForest = forest;
+
+    map = new google.maps.Map(document.getElementById("map"), {
+      zoom: 14,
+      center: { lat: forest.lat, lng: forest.lng }
+    });
+
+    // 🟩 Load geofence
+    const geo = await fetch('/api/geofence');
+    const geoData = await geo.json();
+    geoZone = geoData[forest.name];
+
+    const fenceBounds = {
+      north: geoZone.latMax,
+      south: geoZone.latMin,
+      east: geoZone.lngMax,
+      west: geoZone.lngMin
+    };
+
+    if (geoFenceBox) geoFenceBox.setMap(null);
+
+    geoFenceBox = new google.maps.Rectangle({
+      strokeColor: "#10B981",
+      strokeOpacity: 0.8,
+      strokeWeight: 2,
+      fillColor: "#A7F3D0",
+      fillOpacity: 0.35,
+      map,
+      bounds: fenceBounds
+    });
+
+    // 🐾 Load animals
+    const animalRes = await fetch('/api/animals');
+    const animals = await animalRes.json();
+    const animalsInForest = animals.filter(a => a.forest === forest.name);
+
+    if (animalsInForest.length === 0) {
+      alert("No animal movement data for " + forest.name);
+      return;
+    }
+
+    animalsInForest.forEach(animal => {
+      let step = 0;
+      const path = animal.path;
+
+      const marker = new google.maps.Marker({
+        map,
+        title: "Animal " + animal.id
+      });
+
+      const info = new google.maps.InfoWindow({
+        content: `<strong>Animal ID:</strong> ${animal.id}<br><img src="/images/${animal.image}" class="w-32 rounded"/>`
+      });
+
+      marker.addListener("click", () => info.open(map, marker));
+
+      animalMarkers.push(marker);
+
+      const interval = setInterval(() => {
+        if (step >= path.length) step = 0;
+
+        const pos = path[step];
+        marker.setPosition(pos);
+
+        const outside = (
+          pos.lat < geoZone.latMin ||
+          pos.lat > geoZone.latMax ||
+          pos.lng < geoZone.lngMin ||
+          pos.lng > geoZone.lngMax
+        );
+
+        if (outside) {
+          marker.setLabel("⚠");
+          marker.setAnimation(google.maps.Animation.BOUNCE);
+        } else {
+          marker.setLabel(null);
+          marker.setAnimation(null);
+        }
+
+        const timestamp = new Date().toISOString();
+        //const timestamp = "2025-05-10T02:00:00";
+
+        fetch('/api/risk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: pos.lat,
+            lng: pos.lng,
+            timestamp,
+            forest: currentForest.name
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          console.log(`🧠 ${animal.id} →`, data);
+
+          document.getElementById('riskScore').textContent = data.risk_score.toFixed(2);
+          document.getElementById('riskLevel').textContent = data.risk_level;
+
+          const panel = document.getElementById('riskPanel');
+          if (data.risk_level === "High") {
+            panel.className = "fixed top-4 right-4 bg-red-100 text-red-800 border border-red-400 px-4 py-2 rounded shadow-md transition-all duration-300 z-50";
+
+            fetch('/api/log-alert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                forest: currentForest.name,
+                animalId: animal.id,
+                lat: pos.lat,
+                lng: pos.lng,
+                timestamp,
+                riskScore: data.risk_score
+              })
+            });
+          } else {
+            panel.className = "fixed top-4 right-4 bg-green-100 text-green-800 border border-green-400 px-4 py-2 rounded shadow-md transition-all duration-300 z-50";
+          }
+        });
+
+        step++;
+      }, 2000);
+
+      animalIntervals.push(interval);
+    });
+  }
+
+  window.onload = loadForests;
+</script>

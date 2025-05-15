@@ -1,0 +1,33 @@
+<% title = "Poaching Alerts" %>
+
+<div class="p-6">
+  <div class="flex justify-between items-center mb-4">
+    <h1 class="text-3xl font-bold text-green-800">📋 Poaching Alert Logs</h1>
+    <a href="/admin/logout" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Logout</a>
+  </div>
+
+  <table class="w-full table-auto border-collapse border">
+    <thead class="bg-green-100">
+      <tr>
+        <th class="p-2 border">Timestamp</th>
+        <th class="p-2 border">Forest</th>
+        <th class="p-2 border">Animal ID</th>
+        <th class="p-2 border">Latitude</th>
+        <th class="p-2 border">Longitude</th>
+        <th class="p-2 border">Risk Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% logs.forEach(log => { %>
+        <tr class="text-center border-b">
+          <td class="p-2 border"><%= log.timestamp %></td>
+          <td class="p-2 border"><%= log.forest %></td>
+          <td class="p-2 border"><%= log.animalId %></td>
+          <td class="p-2 border"><%= log.lat %></td>
+          <td class="p-2 border"><%= log.lng %></td>
+          <td class="p-2 border text-red-600 font-semibold"><%= log.riskScore %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

@@ -64,7 +64,7 @@ router.post('/api/risk', async (req, res) => {
   const { lat, lng, timestamp } = req.body;
 
   try {
-    const response = await axios.post('http://127.0.0.1:5050/predict', {
+    const response = await axios.post('https://ml-api1-rgg8.onrender.com', {
       lat,
       lng,
       timestamp
